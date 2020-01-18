@@ -6,10 +6,10 @@ from shapely import geometry
 from math import cos, asin, sqrt, pi
 import numpy as np
 import cv2
-from wms import MAX_CADASTRE_SCALE_THRESHOLD
 
 DEBUG_IMAGE = False
 
+MAX_CADASTRE_SCALE_THRESHOLD = 200.0
 
 @dataclass
 class bbox:

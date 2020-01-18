@@ -31,16 +31,22 @@ class DAO:
         with self.connection:
             with self.connection.cursor() as cursor:
                 cursor.execute(_sql_obj)
+
+    def _query_and_return(self, _sql_obj):
+        with self.connection:
+            with self.connection.cursor() as cursor:
+                cursor.execute(_sql_obj)
                 return cursor.fetchone()[0]
+
         print("eror or not")
 
 
 
-class ParticleDAO(DAO):
+class DAOParticella(DAO):
 
     def __init__(self):
         DAO.__init__(self)
-        self.create()
+        self.initialize()
 
     def initialize(self):
         create_particelle = "CREATE TABLE IF NOT EXISTS particelle (id SERIAL PRIMARY KEY, \
@@ -104,22 +110,21 @@ class ParticleDAO(DAO):
             return True
         return False
 
-    def get_particella(self, comnue, foglio, particella):
-        self.connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
-        self.cursor = self.connection.cursor()
-        #self.cursor.execute("SELECT to_jsonb(particelle.*) FROM particelle WHERE id='8';", (particella,))
-        self.cursor.execute("SELECT geom FROM particelle WHERE comune=%s AND foglio=%s AND particella=%s;", (comnue, foglio, particella))
-        res = self.cursor.fetchone()
-        if res is None:
-            return (0, "Geometry is null")
+    def get_particella(self, comune, foglio, particella):
 
-        geom = wkb.loads(res[0], hex=True)
-        feature = Feature(geom, properties={'comune': comnue, 'foglio': foglio, 'particella': particella})
-        print(res)
-        self.connection.commit()
-        self.cursor.close()
-        self.connection.close()
+        _sql = "SELECT geom FROM particelle WHERE comune='{comune}' AND foglio='{foglio}' AND particella='{particella}';".format(comune=comune,
+                foglio=foglio,
+                particella=particella)
+        res = self._query_and_return(_sql)
+        geom = wkb.loads(res, hex=True)
+        feature = Feature(geom, properties={'comune': comune, 'foglio': foglio, 'particella': particella})
+        return dumps(feature)
 
 
 
 
+
+
+
+p = DAOParticella()
+p.get_particella('A564', '0038', '117')

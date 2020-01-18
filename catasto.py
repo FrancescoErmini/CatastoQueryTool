@@ -17,7 +17,8 @@ import psycopg2
 from math import cos, asin, sqrt, pi
 import numpy as np
 
-from wms import WMSTool, parse_geom_response, parse_html_response, ITALIA_WMS_URL, CATASTO_ITALIA_LAYER_PARTICELLE, CATASTO_ITALIA_SRS
+from wms import WMSTool, parse_geom_response, parse_html_response, ITALIA_WMS_URL, \
+    CATASTO_ITALIA_LAYER_PARTICELLE, CATASTO_ITALIA_SRS, MAX_CADASTRE_SCALE_THRESHOLD
 from utils import bbox, size, point
 from utils import *
 
