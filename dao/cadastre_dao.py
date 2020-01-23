@@ -1,8 +1,8 @@
 import psycopg2
-from shapely import geometry, wkt, wkb
-from shapely_geojson import Feature, FeatureCollection, dump, dumps
+from shapely import wkb
+from utils.shapely_geojson import Feature, dumps
 
-from psycopg2 import connect, extensions, sql
+from psycopg2 import extensions, sql
 
 query_particella = "SELECT jsonb_build_object(\
     'type',       'Feature',\
@@ -124,7 +124,7 @@ class DAOParticella(DAO):
 
 
 
+CATASTO_DAO = DAOParticella()
 
-
-p = DAOParticella()
-p.get_particella('A564', '0038', '117')
+#p = DAOParticella()
+#p.get_particella('A564', '0038', '117')

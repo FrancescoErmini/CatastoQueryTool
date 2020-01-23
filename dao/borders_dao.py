@@ -10,19 +10,24 @@ import pyproj
 from shapely import geometry
 from shapely.ops import transform
 from shapely.geometry import shape, Point, LineString, Polygon
-
+import logging
 import psycopg2
+from shapely import wkb
+import numpy as np
+from utils.utils import meters2degrees
 from psycopg2 import sql
 import cv2
+"""
+BordersDAO e' la classe che si occupa di creazione, inserimento e cancellazione dei confini nazionali:
 
 
-
+"""
 """
 09;248;048; 001 ;048001;Bagno a Ripoli;Bagno a Ripoli;;3;Centro;Toscana;Firenze;0;FI;48001;48001;48001;48001;A564;25.403;ITI;ITI1;ITI14
 """
-#Siglaautomobilistica;CodiceComune
-BORDERS_SHAPE_COMUNI = os.path.join("data", "borders", "it", "comuni", "Com01012018_WGS84.shp")
-BORDERS_CSV_COMUNI =   os.path.join("data", "borders", "it", "comuni", "comuni.csv")
+
+BORDERS_SHAPE_COMUNI = os.path.join("../data", "borders", "it", "comuni", "Com01012018_WGS84.shp")
+BORDERS_CSV_COMUNI = os.path.join("../data", "borders", "it", "comuni", "comuni.csv")
 
 
 class Borders:
@@ -111,44 +116,33 @@ class Borders:
 		self.cursor.close()
 		self.connection.close()
 
-	def shape_inspect(self):
-		shapefile = fiona.open(BORDERS_SHAPE_COMUNI)
-		# Make sure the dataset exists -- it would be None if we couldn't open it
-		if not shapefile:
-			print('Error: could not open shapefile')
-		driver = shapefile.driver
-		print('Dataset driver is: {n}\n'.format(n=driver))
+	def generate_points(self, _distance):
+		logging.info("PRECISION OF SAMPLING DISTANCE in meter: " + str(_distance))
+		self.cursor.execute("SELECT  geom FROM comuni WHERE id='{0}';".format(str(self.id_comune)))
+		_res = self.cursor.fetchall()
+		if _res is None:
+			raise ValueError("comune id non esiste nel db, riprova scemo!")
+		elif len(_res) > 1:
+			raise ValueError("Codice comune risulta dublicato, wtf?")
 
-		### How many features are contained in this Shapefile?
-		feature_count = len(shapefile)
-		print('The shapefile has {n} feature(s)\n'.format(n=feature_count))
+		poly = wkb.loads(_res[0][0], hex=True)
+		minx, miny, maxx, maxy = poly.bounds
+		_x = np.arange(minx, maxx, meters2degrees(_distance))
+		_y = np.arange(miny, maxy, meters2degrees(_distance))
 
-		### What is the shapefiles's projection?
-		# Get the spatial reference
-		spatial_ref = shapefile.crs
-		print('The shapefiles spatial ref is:\n', spatial_ref, '\n')
+		_xy = np.meshgrid(_x, _y)
+		mat = np.array(_xy).transpose()
+		p_array = np.reshape(mat, (1, -1, 2))
+		logging.info("PUNTI TOTALI NEL COMUNE: " + str(len(p_array[0])))
 
-		# Let's pull out a specific feature from the shapefile
-		feature = shapefile[0]
+		count = 0
+		while count < len(p_array[0]):
+			_point = Point(p_array[0][count][0], p_array[0][count][1])
+			if poly.contains(_point):
+				self.points.append([p_array[0][count][0], p_array[0][count][1]])
+			count += 1
+		logging.info("PUNTI SCELTI: " + str(len(self.points)))
 
-		### What is the features's geometry? is it a point? a polyline? a polygon?
-		geometry = feature['geometry']['type']
-		print("The features's geometry is: {geom}\n".format(geom=geometry))
-
-		### How many properties are in the shapefile, and what are their names?
-		properties = feature["properties"].keys()
-
-		# How many fields
-		field_count = len(properties)
-		print('Layer has {n} fields'.format(n=field_count))
-
-		# What are their names?
-		print('Their names are: ')
-		for prop in properties:
-			print('\t{name}'.format(name=prop))
-		for feature in shapefile:
-			if feature['properties']['COMUNE'] == 'Bagno a Ripoli':
-				print(feature)
 
 
 if __name__=='__main__':

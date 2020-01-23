@@ -7,21 +7,17 @@ import datetime
 
 import logging
 
-from shapely import geometry, wkt, wkb
-from shapely.geometry import shape, Point, LineString, Polygon
+from shapely import wkb
 
 from shapely.geometry import Point
 
 import psycopg2
 
-from math import cos, asin, sqrt, pi
-import numpy as np
-
 from wms import WMSTool, parse_geom_response, parse_html_response, ITALIA_WMS_URL, \
-    CATASTO_ITALIA_LAYER_PARTICELLE, CATASTO_ITALIA_SRS, MAX_CADASTRE_SCALE_THRESHOLD
-from utils import bbox, size, point
-from utils import *
+    CATASTO_ITALIA_LAYER_PARTICELLE, CATASTO_ITALIA_SRS
+from utils.utils import *
 
+from dao.cadastre_dao import DAOParticella, CATASTO_DAO
 
 LOG_LEVEL = logging.INFO
 #logging.basicConfig(filename='catasto_errors.log', filemode='w+', format='%(message)s', level=logging.DEBUG)
@@ -34,106 +30,25 @@ MAX_POINTS = 10
 IMG_PIXEL_WIDTH = 200
 PRINT_UPDATES_EVERY_N_QUERY = 50
 
-
-def calc_process_time(starttime, cur_iter, max_iter):
-    telapsed = time.time() - starttime
-    testimated = (telapsed/cur_iter)*(max_iter)
-
-    finishtime = starttime + testimated
-    finishtime = datetime.datetime.fromtimestamp(finishtime).strftime("%d/%m/%Y, %H:%M:%S")  # in time
-
-    lefttime = testimated-telapsed  # in seconds
-    print("time elapsed: %s(s), time left: %s(s), estimated finish time: %s" % (int(telapsed), int(lefttime), finishtime))
-
-
-
 """
-09;248;048; 001 ;048001;Bagno a Ripoli;Bagno a Ripoli;;3;Centro;Toscana;Firenze;0;FI;48001;48001;48001;48001;A564;25.403;ITI;ITI1;ITI14
+CatastoQueryTool e' la classe dove e' implementata la logica di ricostruzione
+del dato catastale (comune, foglio, particella) a partire da un punto geografio.
+
+
+CatastoQueryTool esponse un unico metodo, query_point().
+Vedi documentazione diagramam flusso.
+
 """
 
 
 class CatastoQueryTool:
 
-    def __init__(self, id_comune):
+    def __init__(self):
         self.srs = 4258
         self.wms = WMSTool(base_url=ITALIA_WMS_URL, srs=CATASTO_ITALIA_SRS, layer=CATASTO_ITALIA_LAYER_PARTICELLE)
-        self.points = []
-        self.id_comune = id_comune
-        self.connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
-        self.cursor = self.connection.cursor()
-        self.generate_points()
+        self._dao = CATASTO_DAO
 
-    def run(self):
-        if self.points is None:
-            self.logging.critical("Non ci sono punti da interrogare, bona ci si!")
-            return False
-
-        if self.cursor is None:
-            self.cursor = self.connection.cursor()
-
-        start_time = time.time()
-        queries_succeeded = 0
-        queries_index = 0
-        print("START TIME: "+str(datetime.datetime.fromtimestamp(start_time).strftime("%d/%m/%Y, %H:%M:%S")))
-        for p in self.points:
-            queries_index += 1
-            if self.query_point(p[1], p[0]):
-                queries_succeeded += 1
-            if queries_index % PRINT_UPDATES_EVERY_N_QUERY:
-                calc_process_time(starttime=start_time, cur_iter=queries_succeeded, max_iter=len(self.points))
-        end_time = time.time()
-        duration = end_time - start_time
-        print("%s QUERES LAST FOR  %s  seconds" % (len(self.points), str(duration)))
-
-        self.cursor.execute("SELECT pg_size_pretty( pg_database_size('cadastredb'));")
-        print("%s QUERIES SET DATABASE MEMORY TO %s" % (len(self.points), self.cursor.fetchall()))
-        self.connection.commit()
-        self.cursor.close()
-        self.connection.close()
-        return True
-
-    def generate_points(self, _n_max=MAX_POINTS, _distance=DISTANCE_SAMPLING):
-        logging.info("MAX NUMBER OF POINT BY CONFIG: "+str(_n_max))
-        logging.info("PRECISION OF SAMPLING DISTANCE in meter: "+str(_distance))
-        self.cursor.execute("SELECT  geom FROM comuni WHERE id='{0}';".format(str(self.id_comune)))
-        _res = self.cursor.fetchall()
-        if _res is None:
-            raise ValueError("comune id non esiste nel db, riprova scemo!")
-        elif len(_res) > 1:
-            raise ValueError("Codice comune risulta dublicato, wtf?")
-        
-        poly = wkb.loads(_res[0][0], hex=True)
-        minx, miny, maxx, maxy = poly.bounds
-        _x = np.arange(minx, maxx, meters2degrees(_distance))
-        _y = np.arange(miny, maxy, meters2degrees(_distance))
-
-        _xy = np.meshgrid(_x, _y)
-        mat = np.array(_xy).transpose()
-        p_array = np.reshape(mat, (1,-1,2))
-        logging.info("PUNTI TOTALI NEL COMUNE: " + str(len(p_array[0])))
-
-        count = 0
-        while len(self.points) < _n_max and count < len(p_array[0]):
-            _point = Point(p_array[0][count][0], p_array[0][count][1])
-            if poly.contains(_point):
-                self.points.append([p_array[0][count][0],p_array[0][count][1]])
-            count += 1
-        logging.info("PUNTI SCELTI: " + str(len(self.points)))
-
-    def reset(self):
-        drop_particelle = "DROP TABLE IF EXISTS particelle;"
-
-        create_particelle = "CREATE TABLE particelle (id SERIAL PRIMARY KEY, \
-                                                    comune VARCHAR(64), foglio VARCHAR(64), particella VARCHAR(64),\
-                                                    bbox GEOMETRY,\
-                                                    geom GEOMETRY,\
-                                                    updated TIMESTAMP DEFAULT NOW()\
-                                                    );"
-        self.cursor.execute(drop_particelle)
-        self.cursor.execute(create_particelle)
-        self.connection.commit()
-
-    def query_point(self, lat, lon, store=True):
+    def query_point(self, lat, lon):
         if 39.0 < lat < 46.0 and 8.0 < lon < 14.0: 
             pass
         else:
@@ -158,15 +73,29 @@ class CatastoQueryTool:
         if comune is None or foglio is None or particella is None:
             logging.error("Error: Issue parsing comune, foglio, particella for point: LAT %s - LON: %s" % (str(lat), str(lon)))
             return False
-
-        self.cursor.execute('SELECT 1 from particelle WHERE comune=%s AND foglio=%s AND particella=%s', (comune, foglio, particella))
-        if self.cursor.fetchone() is not None:
+        """
+        1.1 Salva, aggiorna o skippa. 
+        Se la particella non esiste, si inserisce, altrimenti:
+        
+        Se la particella esiste ma la data di inserimento è assai recente, 
+        si considera duplicata e si interrompe esecuzione della query.
+        
+        Se la particella esiste ma la data di inserimento non e' recente,
+        si esegue la query su bbox e se uguale a quella nel db 
+        si considera duplicata e si interrompe esecuzione.
+         
+        altrimenti (se non si interrompe esecuzione) si 
+        prosegue algoritomo aggiornando bbox e geom.
+        
+        """
+        if self._dao.exists(comune, foglio, particella):
+            # TODO: logica di aggiornamento
+            #
             logging.debug("particella duplicata: %s, %s, %s " % (comune, foglio, particella))
             return True
         
         logging.debug("NUOVA PARTICELLA: %s, %s, %s " % (comune, foglio, particella))
-        self.cursor.execute('INSERT INTO particelle (comune,foglio,particella) VALUES (%s, %s, %s)', (comune, foglio, particella))
-
+        self._dao.insert(comune, foglio, particella)
         """
         2. Ottieni bbox per quella particella. 
            Calcola la size in pixel usando le proporzioni ottenute da bbox.
@@ -186,7 +115,8 @@ class CatastoQueryTool:
         
         #todo aggiungi check validity coordinate e poligoni.
         bbox_poly = geometry.Polygon([[_bbox_rcv.lat1, _bbox_rcv.lon1], [_bbox_rcv.lat1, _bbox_rcv.lon2], [_bbox_rcv.lat2, _bbox_rcv.lon2], [_bbox_rcv.lat2, _bbox_rcv.lon1], [_bbox_rcv.lat1, _bbox_rcv.lon1]])
-        self.cursor.execute('UPDATE particelle SET bbox=ST_GeomFromText(ST_AsText(%s),%s) WHERE comune=%s AND foglio=%s AND particella=%s;', (bbox_poly.wkt, str(self.srs), comune, foglio, particella))
+        self._dao.update_geom(comune, foglio, particella, key='bbox', poly=bbox_poly, srs=self.srs)
+
         #print("saved bbox for: %s, %s, %s ", (comune, foglio, particella))
 
         """
@@ -280,12 +210,9 @@ class CatastoQueryTool:
 
         poly = geometry.Polygon([[p.lat, p.lon] for p in coords])
         print(poly.wkt)
-        self.cursor.execute('UPDATE particelle SET geom=ST_GeomFromText(ST_AsText(%s),%s) WHERE  comune=%s AND foglio=%s AND particella=%s;', (poly.wkt, str(self.srs), comune, foglio, particella))
-        #self.cursor.execute("UPDATE particelle SET geom VALUES (ST_AsEWKT(%s));", (poly.wkb,))
-        #self.cursor.execute('INSERT INTO particelle (geom) VALUES (ST_GeomFromText(ST_AsText(%s),%s))', (poly.wkt, str(self.srs)))
+        self._dao.update_geom(comune, foglio, particella, key='geom', poly=poly, srs=self.srs)
 
         print("saved geometry for: %s, %s, %s " % (comune, foglio, particella))
-
 
         return True
 

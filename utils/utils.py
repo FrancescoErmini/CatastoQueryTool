@@ -1,6 +1,6 @@
 import os
 import random
-
+import fiona
 from dataclasses import dataclass
 from shapely import geometry
 from math import cos, asin, sqrt, pi
@@ -40,32 +40,6 @@ def distance(lat1, lon1, lat2, lon2, unit='mt'):
     if unit == 'mt':
         res = res * 1000
     return res
-
-
-def get_size_from_bbox(_bbox, pixel_width):
-    # get base x in meter
-    real_width = distance(_bbox.lat1, _bbox.lon1, _bbox.lat1, _bbox.lon2)
-    # get high y in meter
-    real_height = distance(_bbox.lat1, _bbox.lon1, _bbox.lat2, _bbox.lon1)
-    # proportion:
-    # pixel_width : pixel_height = real_width : real_height
-    pixel_height = int((real_height * pixel_width) / real_width)
-    _size = size(w=pixel_width, h=pixel_height)
-    return _size
-
-
-def create_bbox(lat1, lon1, meters=1):
-
-    #
-    # 0.00001 in coordinaes is 1.37 meters
-    #
-    lat1 = round(lat1, 5)
-    lon1 = round(lon1, 5)
-    delta = round(0.00001 * meters, 5)
-    lat2 = round(lat1 + delta, 5)
-    lon2 = round(lon1 + delta, 5)
-    _bbox = bbox(lat1=lat1, lon1=lon1, lat2=lat2, lon2=lon2)
-    return _bbox
 
 
 def shift_point(_point, dx, dy):
@@ -136,6 +110,75 @@ def degrees2meters(_degrees):
     return _degrees * 100000
 
 
+def shape_inspect(path):
+    shapefile = fiona.open(path)
+    # Make sure the dataset exists -- it would be None if we couldn't open it
+    if not shapefile:
+        print('Error: could not open shapefile')
+    driver = shapefile.driver
+    print('Dataset driver is: {n}\n'.format(n=driver))
+
+    ### How many features are contained in this Shapefile?
+    feature_count = len(shapefile)
+    print('The shapefile has {n} feature(s)\n'.format(n=feature_count))
+
+    ### What is the shapefiles's projection?
+    # Get the spatial reference
+    spatial_ref = shapefile.crs
+    print('The shapefiles spatial ref is:\n', spatial_ref, '\n')
+
+    # Let's pull out a specific feature from the shapefile
+    feature = shapefile[0]
+
+    ### What is the features's geometry? is it a point? a polyline? a polygon?
+    geometry = feature['geometry']['type']
+    print("The features's geometry is: {geom}\n".format(geom=geometry))
+
+    ### How many properties are in the shapefile, and what are their names?
+    properties = feature["properties"].keys()
+
+    # How many fields
+    field_count = len(properties)
+    print('Layer has {n} fields'.format(n=field_count))
+
+    # What are their names?
+    print('Their names are: ')
+    for prop in properties:
+        print('\t{name}'.format(name=prop))
+    for feature in shapefile:
+        if feature['properties']['COMUNE'] == 'Bagno a Ripoli':
+            print(feature)
+"""
+BBOX UTILS
+"""
+
+
+def get_size_from_bbox(_bbox, pixel_width):
+    # get base x in meter
+    real_width = distance(_bbox.lat1, _bbox.lon1, _bbox.lat1, _bbox.lon2)
+    # get high y in meter
+    real_height = distance(_bbox.lat1, _bbox.lon1, _bbox.lat2, _bbox.lon1)
+    # proportion:
+    # pixel_width : pixel_height = real_width : real_height
+    pixel_height = int((real_height * pixel_width) / real_width)
+    _size = size(w=pixel_width, h=pixel_height)
+    return _size
+
+
+def create_bbox(lat1, lon1, meters=1):
+
+    #
+    # 0.00001 in coordinaes is 1.37 meters
+    #
+    lat1 = round(lat1, 5)
+    lon1 = round(lon1, 5)
+    delta = round(0.00001 * meters, 5)
+    lat2 = round(lat1 + delta, 5)
+    lon2 = round(lon1 + delta, 5)
+    _bbox = bbox(lat1=lat1, lon1=lon1, lat2=lat2, lon2=lon2)
+    return _bbox
+
+
 def bbox2polygon(_bbox):
     _poly = geometry.Polygon([[_bbox.lat1, _bbox.lon1], [_bbox.lat1, _bbox.lon2], [_bbox.lat2, _bbox.lon2], [_bbox.lat2, _bbox.lon1], [_bbox.lat1, _bbox.lon1]])
     return _poly.wkt
@@ -184,6 +227,9 @@ def create_bboxes(_bbox, delta_x_max=MAX_CADASTRE_SCALE_THRESHOLD, delta_y_max=M
 
     return {"bboxes": _bboxes, "size": {"x": len(_longitudes)-1, "y": len(_latitudes)-1}}
 
+"""
+OPENCV IMAGE UTILS
+"""
 
 def compute_shape_from_map_image(image):
     """
@@ -253,7 +299,7 @@ def compute_shape_from_map_image(image):
                 import datetime
                 current_time = datetime.datetime.now()
                 name = "img_fail_{}.png".format(current_time)
-                img_path = os.path.join("imgs", name)
+                img_path = os.path.join("../imgs", name)
                 # cv2.imwrite(img_path, image);
                 cv2.imshow(name, image)
                 cv2.waitKey(0)
@@ -308,3 +354,12 @@ def compute_shape_from_map_image(image):
     except Exception:
         return None
 
+def calc_process_time(starttime, cur_iter, max_iter):
+    telapsed = time.time() - starttime
+    testimated = (telapsed/cur_iter)*(max_iter)
+
+    finishtime = starttime + testimated
+    finishtime = datetime.datetime.fromtimestamp(finishtime).strftime("%d/%m/%Y, %H:%M:%S")  # in time
+
+    lefttime = testimated-telapsed  # in seconds
+    print("time elapsed: %s(s), time left: %s(s), estimated finish time: %s" % (int(telapsed), int(lefttime), finishtime))

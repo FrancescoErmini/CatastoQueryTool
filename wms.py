@@ -1,6 +1,6 @@
 import re
 from owslib.wms import WebMapService
-from utils import bbox
+from utils.utils import bbox
 
 
 ITALIA_WMS_URL = 'https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php'
