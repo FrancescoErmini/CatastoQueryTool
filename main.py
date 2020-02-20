@@ -26,9 +26,9 @@ import numpy as np
 
 LOG_LEVEL = logging.INFO
 #logging.basicConfig(filename='catasto_errors.log', filemode='w+', format='%(message)s', level=logging.DEBUG)
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.ERROR)
 
-DEBUG_IMAGE = False
+DEBUG_IMAGE = True
 
 ITALIA_WMS_URL = 'https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php'
 CATASTO_ITALIA_SRS = 'EPSG:4258'
@@ -36,7 +36,7 @@ CATASTO_ITALIA_LAYER_PARTICELLE = 'CP.CadastralParcel'
 MAX_CADASTRE_SCALE_THRESHOLD = 200.0 # metri oltre i quali il catasto mostra una immagine bianca (troppo zoom out)
 
 DISTANCE_SAMPLING = 100 #meters between points
-MAX_POINTS = 10
+MAX_POINTS = 100000
 IMG_PIXEL_WIDTH = 200
 PRINT_UPDATES_EVERY_N_QUERY = 50
 
@@ -128,7 +128,7 @@ def create_bbox(lat1, lon1, meters=1):
     return _bbox
 
 
-def compute_shape_from_map_image(image):
+def compute_shape_from_map_image(image, title="approx poly"):
     """
 
     Args:
@@ -195,12 +195,14 @@ def compute_shape_from_map_image(image):
             if DEBUG_IMAGE:
                 import datetime
                 current_time = datetime.datetime.now()
-                name = "img_fail_{}.png".format(current_time)
-                img_path = os.path.join("imgs",name)
-                #cv2.imwrite(img_path, image);
-                cv2.imshow(name, image)
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
+                prefix = "failed_"
+                suffix = "_{}.png".format(current_time)
+                name = prefix + title + suffix
+                img_path = os.path.join("imgs", name)
+                cv2.imwrite(img_path, image)
+                #cv2.imshow(name, image)
+                #cv2.waitKey(0)
+                #cv2.destroyAllWindows()
             return None
         # se esistono più poligoni, seleziona quello con area minore.
         if len(new_contours) > 1:
@@ -237,9 +239,16 @@ def compute_shape_from_map_image(image):
             for i in approx:
                 x, y = i.ravel()
                 cv2.circle(image, (x, y), 3, (255, 0, 0), -1)
-            cv2.imshow('Approx polyDP', image)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+            import datetime
+            current_time = datetime.datetime.now()
+            prefix = "success_"
+            suffix = "_{}.png".format(current_time)
+            name = prefix + title + suffix
+            img_path = os.path.join("imgs", name)
+            cv2.imwrite(img_path, image)
+            #cv2.imshow('Approx polyDP', image)
+            #cv2.waitKey(0)
+            #cv2.destroyAllWindows()
 
         """
         7. Ritorna una lista di tuple contenete le coordinate x y dei punti trovati.
@@ -369,14 +378,17 @@ def create_bboxes(_bbox, delta_x_max=MAX_CADASTRE_SCALE_THRESHOLD, delta_y_max=M
 
 
 def calc_process_time(starttime, cur_iter, max_iter):
-    telapsed = time.time() - starttime
-    testimated = (telapsed/cur_iter)*(max_iter)
+    try:
+        telapsed = time.time() - starttime
+        testimated = (telapsed/cur_iter)*(max_iter)
 
-    finishtime = starttime + testimated
-    finishtime = datetime.datetime.fromtimestamp(finishtime).strftime("%d/%m/%Y, %H:%M:%S")  # in time
+        finishtime = starttime + testimated
+        finishtime = datetime.datetime.fromtimestamp(finishtime).strftime("%d/%m/%Y, %H:%M:%S")  # in time
 
-    lefttime = testimated-telapsed  # in seconds
-    print("time elapsed: %s(s), time left: %s(s), estimated finish time: %s" % (int(telapsed), int(lefttime), finishtime))
+        lefttime = testimated-telapsed  # in seconds
+        print("time elapsed: %s(s), time left: %s(s), estimated finish time: %s" % (int(telapsed), int(lefttime), finishtime))
+    except Exception:
+        pass
 
 
 class WMSTool:
@@ -480,10 +492,14 @@ class CatastoQueryTool:
             if self.query_point(p[1], p[0]):
                 queries_succeeded += 1
             if queries_index % PRINT_UPDATES_EVERY_N_QUERY:
-                calc_process_time(starttime=start_time, cur_iter=queries_succeeded, max_iter=len(self.points))
+                pass
+                #calc_process_time(starttime=start_time, cur_iter=queries_succeeded, max_iter=len(self.points))
         end_time = time.time()
         duration = end_time - start_time
-        print("%s QUERES LAST FOR  %s  seconds" % (len(self.points), str(duration)))
+
+
+
+        print("%d QUERES LAST FOR  %s  seconds" % (len(self.points), str(duration)))
 
         self.cursor.execute("SELECT pg_size_pretty( pg_database_size('cadastredb'));")
         print("%s QUERIES SET DATABASE MEMORY TO %s" % (len(self.points), self.cursor.fetchall()))
@@ -518,7 +534,7 @@ class CatastoQueryTool:
             if poly.contains(_point):
                 self.points.append([p_array[0][count][0],p_array[0][count][1]])
             count += 1
-        logging.info("PUNTI SCELTI: " + str(len(self.points)))
+        print("PUNTI SCELTI: " + str(len(self.points)))
 
     def reset(self):
         drop_particelle = "DROP TABLE IF EXISTS particelle;"
@@ -556,7 +572,7 @@ class CatastoQueryTool:
         comune, foglio, particella = parse_html_response(data_info)
 
         if comune is None or foglio is None or particella is None:
-            logging.error("Error: Issue parsing comune, foglio, particella for point: LAT %s - LON: %s" % (str(lat), str(lon)))
+            logging.error("Error: Issue parsing comune, foglio, particella for point: LAT %s - LON: %s with html data: + %s" % (str(lat), str(lon), str(data_info)))
             return False
 
         self.cursor.execute('SELECT 1 from particelle WHERE comune=%s AND foglio=%s AND particella=%s', (comune, foglio, particella))
@@ -666,8 +682,8 @@ class CatastoQueryTool:
         4. ottieni le coordinate dei punti della particella 
            processado l'immagine ottenuta da wms.
         """
-
-        xy = compute_shape_from_map_image(image)
+        img_title = comune + "_" + foglio + "_" + particella
+        xy = compute_shape_from_map_image(image, title=img_title)
 
         if xy is None:
             logging.error("Error: unable to get geometry for: %s, %s, %s with bbox: %s, with distance %s" % (comune, foglio, particella, str(_bbox_rcv), str(distance(_bbox_rcv.lat1, _bbox_rcv.lon1, _bbox_rcv.lat2, _bbox_rcv.lon2))) )
