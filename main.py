@@ -29,6 +29,8 @@ LOG_LEVEL = logging.INFO
 logging.basicConfig(level=logging.ERROR)
 
 DEBUG_IMAGE = True
+DEBUG_IMAGE_SAVE = True
+DEBUG_IMAGE_LIVE = True
 
 ITALIA_WMS_URL = 'https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php'
 CATASTO_ITALIA_SRS = 'EPSG:4258'
@@ -128,6 +130,34 @@ def create_bbox(lat1, lon1, meters=1):
     return _bbox
 
 
+def debug_img(image, title="approx", contourn=None):
+    try:
+        import datetime
+        current_time = datetime.datetime.now()
+        suffix = "_{}.png".format(current_time)
+        name = title + suffix
+
+        if contourn is not None:
+            approx = cv2.approxPolyDP(contourn, 0.001 * cv2.arcLength(contourn, True), True)
+            cv2.drawContours(image, [approx], 0,
+                             (random.randrange(0, 255), random.randrange(0, 255), random.randrange(0, 255)), 2)
+            # marca il punti 0,0  per riferimento.
+            cv2.circle(image, (0, 0), 3, (155, 243, 198), -1)
+            for i in approx:
+                x, y = i.ravel()
+                cv2.circle(image, (x, y), 3, (255, 0, 0), -1)
+
+        if DEBUG_IMAGE_SAVE:
+            img_path = os.path.join("imgs", name)
+            cv2.imwrite(img_path, image)
+
+        if DEBUG_IMAGE_LIVE:
+            cv2.imshow(name, image)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+    except Exception:
+        pass
+
 def compute_shape_from_map_image(image, title="approx poly"):
     """
 
@@ -170,8 +200,16 @@ def compute_shape_from_map_image(image, title="approx poly"):
             x, y, w, h = cv2.boundingRect(c)
             #cv2.rectangle(orig_image, (x, y), (x + w, y + h), (0, 0, 255), 2)
             #cv2.imshow('Bounding rect', orig_image)
-            if abs(w - size_x) < 10.0 and abs(h - size_y) < 10.0:
+            y_tollerance = 100.0 - (100.0 * h / size_y)
+            x_tollerance = 100.0 - (100.0 * w / size_x)
+            #if abs(w - size_x) < 10.0 and abs(h - size_y) < 10.0:
+            if x_tollerance < 10.0 and y_tollerance < 10.0:
                 new_contours.append(c)
+
+        if DEBUG_IMAGE:
+            for c in contours:
+                debug_img(image, title="debug_"+title, contourn=c)
+
 
         """
         3. Scegli tra i poligoni rimaneneti quello con area minore.
@@ -193,13 +231,10 @@ def compute_shape_from_map_image(image, title="approx poly"):
         except IndexError:
             # debugga il motivo per cui non esistono poligoni nell'immagine.
             if DEBUG_IMAGE:
-                import datetime
-                current_time = datetime.datetime.now()
                 prefix = "failed_"
-                suffix = "_{}.png".format(current_time)
-                name = prefix + title + suffix
-                img_path = os.path.join("imgs", name)
-                cv2.imwrite(img_path, image)
+                name = prefix + title
+
+                debug_img(image, title=name)
                 #cv2.imshow(name, image)
                 #cv2.waitKey(0)
                 #cv2.destroyAllWindows()
@@ -228,27 +263,31 @@ def compute_shape_from_map_image(image, title="approx poly"):
             x, y = i.ravel()
             xy.append((x, y))
 
+
         """
         6. Opzionale: Disegna poligono e punti.
         """
 
         if DEBUG_IMAGE:
-            cv2.drawContours(image, [approx], 0, (random.randrange(0, 255),random.randrange(0, 255),random.randrange(0, 255)), 2)
-            # marca il punti 0,0  per riferimento.
-            cv2.circle(image, (0, 0), 3, (155, 243, 198), -1)
-            for i in approx:
-                x, y = i.ravel()
-                cv2.circle(image, (x, y), 3, (255, 0, 0), -1)
-            import datetime
-            current_time = datetime.datetime.now()
-            prefix = "success_"
-            suffix = "_{}.png".format(current_time)
-            name = prefix + title + suffix
-            img_path = os.path.join("imgs", name)
-            cv2.imwrite(img_path, image)
-            #cv2.imshow('Approx polyDP', image)
-            #cv2.waitKey(0)
-            #cv2.destroyAllWindows()
+            prefix = "success"
+            name = prefix + title
+            debug_img(image, title=name, contours=c_opt)
+            # cv2.drawContours(image, [approx], 0, (random.randrange(0, 255),random.randrange(0, 255),random.randrange(0, 255)), 2)
+            # # marca il punti 0,0  per riferimento.
+            # cv2.circle(image, (0, 0), 3, (155, 243, 198), -1)
+            # for i in approx:
+            #     x, y = i.ravel()
+            #     cv2.circle(image, (x, y), 3, (255, 0, 0), -1)
+            # import datetime
+            # current_time = datetime.datetime.now()
+            # prefix = "success_"
+            # suffix = "_{}.png".format(current_time)
+            # name = prefix + title + suffix
+            # img_path = os.path.join("imgs", name)
+            # cv2.imwrite(img_path, image)
+            # #cv2.imshow('Approx polyDP', image)
+            # #cv2.waitKey(0)
+            # #cv2.destroyAllWindows()
 
         """
         7. Ritorna una lista di tuple contenete le coordinate x y dei punti trovati.
@@ -682,7 +721,7 @@ class CatastoQueryTool:
         4. ottieni le coordinate dei punti della particella 
            processado l'immagine ottenuta da wms.
         """
-        img_title = comune + "_" + foglio + "_" + particella
+        img_title = comune + "_" + foglio + "_" + particella + "_"+str(lat)+"_"+str(lon)
         xy = compute_shape_from_map_image(image, title=img_title)
 
         if xy is None:
@@ -710,3 +749,4 @@ if __name__ == '__main__':
     c = CatastoQueryTool(id_comune='048001')
     c.reset()
     c.run()
+    #c.query_point(lat=43.72028570195715, lon=11.285161133038065)
