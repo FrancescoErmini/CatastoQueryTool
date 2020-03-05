@@ -26,7 +26,8 @@ from math import cos, asin, sqrt, pi
 import numpy as np
 
 LOG_LEVEL = logging.INFO
-logging.basicConfig(filename='logs/catasto_errors.log', filemode='w+', format='%(message)s', level=logging.INFO)
+log_file = "logs/log_"+str(datetime.now().strftime("%d-%m-%Y_%I-%M-%S_%p"))+".log"
+logging.basicConfig(filename=log_file, filemode='w+', format='%(message)s', level=logging.INFO)
 # logging.basicConfig(level=logging.ERROR)
 
 DEBUG_IMAGE = False
@@ -39,9 +40,9 @@ CATASTO_ITALIA_LAYER_PARTICELLE = 'CP.CadastralParcel'
 MAX_CADASTRE_SCALE_THRESHOLD = 200.0 # metri oltre i quali il catasto mostra una immagine bianca (troppo zoom out)
 
 DISTANCE_SAMPLING = 100 #meters between points
-MAX_POINTS = 100000
+MAX_POINTS = 1000000
 IMG_PIXEL_WIDTH = 200
-PRINT_UPDATES_EVERY_N_QUERY = 10
+PRINT_UPDATES_EVERY_N_QUERY = 100
 QUERY_CONNECTION_TIMEOUT = 10
 #### MODEL ######
 
@@ -527,6 +528,7 @@ class CatastoQueryTool:
         for _comune in _comuni:
             i += 1
             print("\n############# comune: " + str(i) + "/" + str(len(_comuni)) + " #############")
+            logging.info("\n############# comune: " + str(_comune) + " #############")
             self.scan(_comune[0])
         self.stop()
         
@@ -556,22 +558,25 @@ class CatastoQueryTool:
                 progress = int(100 * (queries_index) / queries_tot)
                 print(">> progress: "+str(progress)+"% - errors: "+str(errors)+"%")
                 #calc_process_time(starttime=start_time, cur_iter=queries_succeeded, max_iter=len(scan_points))
+        self.connection.commit()
         end_time = time.time()
         duration = end_time - start_time
 
         logging.info("For comune %s : %d QUERES LAST FOR  %s  seconds" % (str(id_comune), len(scan_points), str(duration)))
-
+        if self.cursor is None:
+            self.cursor = self.connection.cursor()
         self.cursor.execute("SELECT pg_size_pretty( pg_database_size('cadastredb'));")
         logging.info("For comune %s %s QUERIES SET DATABASE MEMORY TO %s" % (str(id_comune), len(scan_points), self.cursor.fetchall()))
-        self.connection.commit()
-        self.cursor.close()
 
         return True
 
     def stop(self):
+        self.cursor.close()
         self.connection.close()
 
     def generate_points(self, id_comune,  _n_max=MAX_POINTS, _distance=DISTANCE_SAMPLING):
+        if self.cursor is None:
+            self.cursor = self.connection.cursor()
         if id_comune is None:
             logging.critical("Id comune not assigned in generate_point")
             sys.exit(1)
@@ -626,6 +631,8 @@ class CatastoQueryTool:
             pass
         else:
             raise ValueError("FUCK BULSHIT I M VERY STUPID")
+        if self.cursor is None:
+            self.cursor = self.connection.cursor()
 
         """
         0. Crea bbox fittizzio intorno al punto
