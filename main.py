@@ -70,7 +70,7 @@ def parse_html_response(html_string):
     if html_string is None:
         return None
     #if html_string == 'b\'Content-Type: text/html\\r\\n\\r\\n\''
-    if html_string == "Content-Type: text/html\r\n\r\n":
+    if "<td>" not in html_string:
         return "na", "na", "na"
     try:
         res = re.findall(r'NationalCadastralReference</th><td>(.*?)</td>', html_string, re.M | re.I | re.S)
@@ -762,6 +762,11 @@ class CatastoQueryTool:
 if __name__ == '__main__':
     conn = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
     cur = conn.cursor()
+    cur.execute("SELECT id FROM comuni WHERE regione='Toscana' AND geom is NULL;")
+    res_neg = cur.fetchall()
+    for comune_no_geom in res_neg:
+        logging.critical("COMUNE WITHOUT BORDER GEOM IN TOSCNA: "+str(comune_no_geom[0]))
+
     cur.execute("SELECT id FROM comuni WHERE regione='Toscana' AND geom is not NULL;")
     res = cur.fetchall()
     if res is None:
