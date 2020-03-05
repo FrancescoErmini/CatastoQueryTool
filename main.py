@@ -70,6 +70,8 @@ def parse_html_response(html_string):
     if html_string is None:
         return None
     #if html_string == 'b\'Content-Type: text/html\\r\\n\\r\\n\''
+    if html_string == "Content-Type: text/html\r\n\r\n":
+        return "na", "na", "na"
     try:
         res = re.findall(r'NationalCadastralReference</th><td>(.*?)</td>', html_string, re.M | re.I | re.S)
         codice = res[0]
@@ -536,8 +538,8 @@ class CatastoQueryTool:
             if self.query_point(p[1], p[0]):
                 queries_succeeded += 1
             if int(queries_index) % int(PRINT_UPDATES_EVERY_N_QUERY) == 0:
-                errors = 100 * (queries_index-queries_succeeded) / queries_index
-                progress = 100 * (queries_index) / queries_tot
+                errors = int(100 * (queries_index-queries_succeeded) / queries_index)
+                progress = int(100 * (queries_index) / queries_tot)
                 print(">> progress: "+str(progress)+"% - errors: "+str(errors)+"%")
                 #calc_process_time(starttime=start_time, cur_iter=queries_succeeded, max_iter=len(self.points))
         end_time = time.time()
@@ -620,7 +622,9 @@ class CatastoQueryTool:
             return False
 
         comune, foglio, particella = parse_html_response(data_info)
-
+        if comune == "na" and foglio == "na" and particella == "na":
+            logging.error("Na na na found in parsing comune, foglio, particella for point: LAT %s - LON: %s " % (str(lat), str(lon)))
+            return True
         if comune is None or foglio is None or particella is None:
             logging.error("Error: Issue parsing comune, foglio, particella for point: LAT %s - LON: %s with html data: + %s" % (str(lat), str(lon), str(data_info)))
             return False
