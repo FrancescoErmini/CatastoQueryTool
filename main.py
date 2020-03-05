@@ -25,12 +25,12 @@ from math import cos, asin, sqrt, pi
 import numpy as np
 
 LOG_LEVEL = logging.INFO
-#logging.basicConfig(filename='catasto_errors.log', filemode='w+', format='%(message)s', level=logging.DEBUG)
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(filename='logs/catasto_errors.log', filemode='w+', format='%(message)s', level=logging.INFO)
+# logging.basicConfig(level=logging.ERROR)
 
-DEBUG_IMAGE = True
-DEBUG_IMAGE_SAVE = True
-DEBUG_IMAGE_LIVE = True
+DEBUG_IMAGE = False
+DEBUG_IMAGE_SAVE = False
+DEBUG_IMAGE_LIVE = False
 
 ITALIA_WMS_URL = 'https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php'
 CATASTO_ITALIA_SRS = 'EPSG:4258'
@@ -425,7 +425,7 @@ def calc_process_time(starttime, cur_iter, max_iter):
         finishtime = datetime.datetime.fromtimestamp(finishtime).strftime("%d/%m/%Y, %H:%M:%S")  # in time
 
         lefttime = testimated-telapsed  # in seconds
-        print("time elapsed: %s(s), time left: %s(s), estimated finish time: %s" % (int(telapsed), int(lefttime), finishtime))
+        # print("time elapsed: %s(s), time left: %s(s), estimated finish time: %s" % (int(telapsed), int(lefttime), finishtime))
     except Exception:
         pass
 
@@ -505,18 +505,21 @@ class WMSTool:
 
 class CatastoQueryTool:
 
-    def __init__(self, id_comune):
+    def __init__(self):
         self.srs = 4258
         self.wms = WMSTool(base_url=ITALIA_WMS_URL, srs=CATASTO_ITALIA_SRS, layer=CATASTO_ITALIA_LAYER_PARTICELLE)
         self.points = []
-        self.id_comune = id_comune
+        self.id_comune = None
         self.connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
         self.cursor = self.connection.cursor()
-        self.generate_points()
 
-    def run(self):
+
+
+    def run(self, id_comune):
+        self.id_comune = id_comune
+        self.generate_points()
         if self.points is None:
-            self.logging.critical("Non ci sono punti da interrogare, bona ci si!")
+            logging.critical("Non ci sono punti da interrogare, bona ci si!")
             return False
 
         if self.cursor is None:
@@ -525,38 +528,46 @@ class CatastoQueryTool:
         start_time = time.time()
         queries_succeeded = 0
         queries_index = 0
-        print("START TIME: "+str(datetime.datetime.fromtimestamp(start_time).strftime("%d/%m/%Y, %H:%M:%S")))
+        queries_tot = len(self.points)
+        logging.info("START TIME for comune: "+str(self.id_comune)+" "+str(datetime.datetime.fromtimestamp(start_time).strftime("%d/%m/%Y, %H:%M:%S")))
+        logging.info("TOT POINTS: "+str(queries_tot))
         for p in self.points:
             queries_index += 1
             if self.query_point(p[1], p[0]):
                 queries_succeeded += 1
-            if queries_index % PRINT_UPDATES_EVERY_N_QUERY:
-                pass
+            if int(queries_index) % int(PRINT_UPDATES_EVERY_N_QUERY) == 0:
+                errors = 100 * (queries_index-queries_succeeded) / queries_index
+                progress = 100 * (queries_index) / queries_tot
+                print(">> progress: "+str(progress)+"% - errors: "+str(errors)+"%")
                 #calc_process_time(starttime=start_time, cur_iter=queries_succeeded, max_iter=len(self.points))
         end_time = time.time()
         duration = end_time - start_time
 
-
-
-        print("%d QUERES LAST FOR  %s  seconds" % (len(self.points), str(duration)))
+        logging.info("For comune %s : %d QUERES LAST FOR  %s  seconds" % (str(self.id_comune), len(self.points), str(duration)))
 
         self.cursor.execute("SELECT pg_size_pretty( pg_database_size('cadastredb'));")
-        print("%s QUERIES SET DATABASE MEMORY TO %s" % (len(self.points), self.cursor.fetchall()))
+        logging.info("For comune %s %s QUERIES SET DATABASE MEMORY TO %s" % (str(self.id_comune), len(self.points), self.cursor.fetchall()))
         self.connection.commit()
         self.cursor.close()
         self.connection.close()
         return True
 
     def generate_points(self, _n_max=MAX_POINTS, _distance=DISTANCE_SAMPLING):
+        if self.id_comune is None:
+            logging.critical("Id comune not assigned in generate_point")
+            sys.exit(1)
         logging.info("MAX NUMBER OF POINT BY CONFIG: "+str(_n_max))
         logging.info("PRECISION OF SAMPLING DISTANCE in meter: "+str(_distance))
         self.cursor.execute("SELECT  geom FROM comuni WHERE id='{0}';".format(str(self.id_comune)))
         _res = self.cursor.fetchall()
-        if _res is None:
+        if _res is None or _res[0][0] is None:
+            logging.critical("comune "+str(self.id_comune)+" non esiste nel db, riprova scemo!")
             raise ValueError("comune id non esiste nel db, riprova scemo!")
         elif len(_res) > 1:
+            logging.critical("comune " + str(self.id_comune) + " risulta duplicato, wwtf?!")
             raise ValueError("Codice comune risulta dublicato, wtf?")
-        
+
+
         poly = wkb.loads(_res[0][0], hex=True)
         minx, miny, maxx, maxy = poly.bounds
         _x = np.arange(minx, maxx, meters2degrees(_distance))
@@ -565,7 +576,7 @@ class CatastoQueryTool:
         _xy = np.meshgrid(_x, _y)
         mat = np.array(_xy).transpose()
         p_array = np.reshape(mat, (1,-1,2))
-        logging.info("PUNTI TOTALI NEL COMUNE: " + str(len(p_array[0])))
+        logging.info("PUNTI TOTALI NEL COMUNE " + str(self.id_comune)+" : " + str(len(p_array[0])))
 
         count = 0
         while len(self.points) < _n_max and count < len(p_array[0]):
@@ -573,7 +584,7 @@ class CatastoQueryTool:
             if poly.contains(_point):
                 self.points.append([p_array[0][count][0],p_array[0][count][1]])
             count += 1
-        print("PUNTI SCELTI: " + str(len(self.points)))
+        # print("PUNTI SCELTI: " + str(len(self.points)))
 
     def reset(self):
         drop_particelle = "DROP TABLE IF EXISTS particelle;"
@@ -734,19 +745,34 @@ class CatastoQueryTool:
             return False
 
         poly = geometry.Polygon([[p.lat, p.lon] for p in coords])
-        print(poly.wkt)
+        # print(poly.wkt)
         self.cursor.execute('UPDATE particelle SET geom=ST_GeomFromText(ST_AsText(%s),%s) WHERE  comune=%s AND foglio=%s AND particella=%s;', (poly.wkt, str(self.srs), comune, foglio, particella))
         #self.cursor.execute("UPDATE particelle SET geom VALUES (ST_AsEWKT(%s));", (poly.wkb,))
         #self.cursor.execute('INSERT INTO particelle (geom) VALUES (ST_GeomFromText(ST_AsText(%s),%s))', (poly.wkt, str(self.srs)))
 
-        print("saved geometry for: %s, %s, %s " % (comune, foglio, particella))
-
+        # print("save: %s, %s, %s " % (comune, foglio, particella))
 
         return True
 
 
 if __name__ == '__main__':
-    c = CatastoQueryTool(id_comune='048001')
+    conn = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM comuni WHERE regione='Toscana' AND geom is not NULL;")
+    res = cur.fetchall()
+    if res is None:
+        import sys
+        logging.critical("Unable to read the db of comuni, annammo bene..")
+        sys.exit(1)
+    cur.close()
+    conn.close()
+    comuni = res
+
+    c = CatastoQueryTool()
     c.reset()
-    c.run()
+    i = 0
+    for comune in comuni:
+        i += 1
+        print("\n############# comune: "+str(i)+"/"+str(len(comuni))+" #############")
+        c.run(comune[0])
     #c.query_point(lat=43.72028570195715, lon=11.285161133038065)
