@@ -26,7 +26,7 @@ from math import cos, asin, sqrt, pi
 import numpy as np
 
 LOG_LEVEL = logging.INFO
-log_file = "logs/log_"+str(datetime.now().strftime("%d-%m-%Y_%I-%M-%S_%p"))+".log"
+log_file = "logs/log_"+str(datetime.datetime.now().strftime("%d-%m-%Y_%I-%M-%S_%p"))+".log"
 logging.basicConfig(filename=log_file, filemode='w+', format='%(message)s', level=logging.INFO)
 # logging.basicConfig(level=logging.ERROR)
 
@@ -526,9 +526,13 @@ class CatastoQueryTool:
             sys.exit(1)
         i = 0
         for _comune in _comuni:
+            
             i += 1
+            if i < 4:
+                print("SKIP the first %d just for now" % i)
+                continue
             print("\n############# comune: " + str(i) + "/" + str(len(_comuni)) + " #############")
-            logging.info("\n############# comune: " + str(_comune) + " #############")
+            logging.info("\n############# comune: " + str(_comune[0]) + " #############")
             self.scan(_comune[0])
         self.stop()
         
@@ -550,7 +554,13 @@ class CatastoQueryTool:
         logging.info("TOT POINTS: "+str(queries_tot))
         for p in scan_points:
             queries_index += 1
-            if self.query_point(p[1], p[0]):
+            _result = False
+            try:
+                _result = self.query_point(p[1], p[0])
+            except Exception:
+                logging.error("Uncautch exception in query_point")
+                pass
+            if _result:
                 queries_succeeded += 1
             if int(queries_index) % int(PRINT_UPDATES_EVERY_N_QUERY) == 0:
                 self.connection.commit()
@@ -786,6 +796,8 @@ class CatastoQueryTool:
         if coords is None:
             logging.error("Error: unable to reproject coordiantes in ESRI system")
             return False
+        if len(coords) < 3:
+            logging.error("xy coordinates must be at leat 3 to create a polygon")
 
         poly = geometry.Polygon([[p.lat, p.lon] for p in coords])
         # print(poly.wkt)
