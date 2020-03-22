@@ -528,9 +528,6 @@ class CatastoQueryTool:
         for _comune in _comuni:
             
             i += 1
-            if i < 4:
-                print("SKIP the first %d just for now" % i)
-                continue
             print("\n############# comune: " + str(i) + "/" + str(len(_comuni)) + " #############")
             logging.info("\n############# comune: " + str(_comune[0]) + " #############")
             self.scan(_comune[0])
