@@ -518,6 +518,7 @@ class CatastoQueryTool:
         self.cursor = self.connection.cursor()
 
     def run(self):
+        # TODO: remove hard coded query
         self.cursor.execute("SELECT id FROM comuni WHERE regione='Toscana' AND geom is not NULL;")
         _comuni = self.cursor.fetchall()
         if _comuni is None:
