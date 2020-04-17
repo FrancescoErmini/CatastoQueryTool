@@ -30,6 +30,9 @@ log_file = "logs/log_"+str(datetime.datetime.now().strftime("%d-%m-%Y_%I-%M-%S_%
 logging.basicConfig(filename=log_file, filemode='w+', format='%(message)s', level=logging.INFO)
 # logging.basicConfig(level=logging.ERROR)
 
+QUICK_MODE = True
+RESET_DB = True
+
 DEBUG_IMAGE = False
 DEBUG_IMAGE_SAVE = False
 DEBUG_IMAGE_LIVE = False
@@ -621,7 +624,8 @@ class CatastoQueryTool:
         # print("PUNTI SCELTI: " + str(len(scan_points)))
 
     def reset(self):
-        return True
+        if not RESET_DB:
+            return True
         drop_particelle = "DROP TABLE IF EXISTS particelle;"
 
         create_particelle = "CREATE TABLE particelle (id SERIAL PRIMARY KEY, \
@@ -706,6 +710,8 @@ class CatastoQueryTool:
         self.cursor.execute('UPDATE particelle SET bbox=ST_GeomFromText(ST_AsText(%s),%s) WHERE comune=%s AND foglio=%s AND particella=%s;', (bbox_poly.wkt, str(self.srs), comune, foglio, particella))
         #print("saved bbox for: %s, %s, %s ", (comune, foglio, particella))
 
+        if QUICK_MODE:
+        	return True
         """
         3. Ottieni immagine della particella di interesse.
         
@@ -811,6 +817,7 @@ class CatastoQueryTool:
 if __name__ == '__main__':
 
     c = CatastoQueryTool()
+    c.reset()
     
     try:
         c.run()
