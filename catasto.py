@@ -2,33 +2,23 @@
 # -*- coding: UTF-8 -*-
 __author__ = 'Francesco Ermini'
 
-import time
-import datetime
+
 
 import logging
-
-from shapely import wkb
-
-from shapely.geometry import Point
-
-import psycopg2
 
 from wms import WMSTool, parse_geom_response, parse_html_response, ITALIA_WMS_URL, \
     CATASTO_ITALIA_LAYER_PARTICELLE, CATASTO_ITALIA_SRS
 from utils.utils import *
 
-from dao.cadastre_dao import DAOParticella, CATASTO_DAO
+from dao.dao import DAOParticella, CATASTO_DAO
 
 LOG_LEVEL = logging.INFO
 #logging.basicConfig(filename='catasto_errors.log', filemode='w+', format='%(message)s', level=logging.DEBUG)
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=LOG_LEVEL)
 
 
 
-DISTANCE_SAMPLING = 100 #meters between points
-MAX_POINTS = 10
-IMG_PIXEL_WIDTH = 200
-PRINT_UPDATES_EVERY_N_QUERY = 50
+from config import  DISTANCE_SAMPLING, MAX_POINTS, IMG_PIXEL_WIDTH, PRINT_UPDATES_EVERY_N_QUERY
 
 """
 CatastoQueryTool e' la classe dove e' implementata la logica di ricostruzione
@@ -217,7 +207,3 @@ class CatastoQueryTool:
         return True
 
 
-if __name__ == '__main__':
-    c = CatastoQueryTool(id_comune='048001')
-    c.reset()
-    c.run()
