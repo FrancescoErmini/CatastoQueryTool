@@ -32,7 +32,6 @@ logging.basicConfig(filename=log_file, filemode='w+', format='%(message)s', leve
 
 QUICK_MODE = True
 RESET_DB = True
-N_REGIONI_PARALLELO = 2
 DEBUG_IMAGE = False
 DEBUG_IMAGE_SAVE = False
 DEBUG_IMAGE_LIVE = False
@@ -42,9 +41,11 @@ CATASTO_ITALIA_SRS = 'EPSG:4258'
 CATASTO_ITALIA_LAYER_PARTICELLE = 'CP.CadastralParcel'
 MAX_CADASTRE_SCALE_THRESHOLD = 200.0 # metri oltre i quali il catasto mostra una immagine bianca (troppo zoom out)
 
-DISTANCE_SAMPLING = 100 #meters between points
-MAX_POINTS = 1000000000000000
-MAX_COMUNI = 1000000000000000
+DISTANCE_SAMPLING = 250 #meters between points
+MAX_POINTS = 100000000000000
+MAX_COMUNI = 1000000000
+N_REGIONI_PARALLELO = 3
+
 IMG_PIXEL_WIDTH = 200
 PRINT_UPDATES_EVERY_N_QUERY = 100
 QUERY_CONNECTION_TIMEOUT = 10
@@ -528,6 +529,9 @@ class CatastoQueryTool:
         if self.cursor is None:
             self.cursor = self.connection.cursor()
         # TODO: remove hard coded query
+        if "Valle" in self.regione:
+
+            return False
         _query_str = f"SELECT id FROM comuni WHERE regione='{self.regione}' AND geom is not NULL;"
         self.cursor.execute(_query_str)
         _comuni = self.cursor.fetchall()
@@ -865,11 +869,15 @@ if __name__ == '__main__':
         # avoid None in list of regions
         parallel_regions = [r for r in list(grouped_regions) if r is not None]
 
+        print("INIT-ora fo le regioni:")
+        print(parallel_regions)
+
         # crate parallels threads and wait to complete
         threads = []
         for region in parallel_regions:
             t = CatastoThread(regione=region)
             threads.append(t)
+        print("creati "+str(len(threads))+" threads")
 
         # start multi threading for N regioni
         for th in threads:
@@ -878,3 +886,5 @@ if __name__ == '__main__':
         # active wait threads to complete before new parallel run
         for th in threads:
             th.join()
+        print("finiti ithreads per regioni")
+        print(parallel_regions)
