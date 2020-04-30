@@ -43,13 +43,13 @@ CATASTO_ITALIA_LAYER_PARTICELLE = 'CP.CadastralParcel'
 MAX_CADASTRE_SCALE_THRESHOLD = 200.0 # metri oltre i quali il catasto mostra una immagine bianca (troppo zoom out)
 
 DISTANCE_SAMPLING = 100 #meters between points
-MAX_POINTS = 10
-MAX_COMUNI = 1
+MAX_POINTS = 1000000000000000
+MAX_COMUNI = 1000000000000000
 IMG_PIXEL_WIDTH = 200
 PRINT_UPDATES_EVERY_N_QUERY = 100
 QUERY_CONNECTION_TIMEOUT = 10
-#### MODEL ######
 
+#### MODEL ######
 
 @dataclass
 class bbox:
