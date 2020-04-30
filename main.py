@@ -41,7 +41,7 @@ CATASTO_ITALIA_SRS = 'EPSG:4258'
 CATASTO_ITALIA_LAYER_PARTICELLE = 'CP.CadastralParcel'
 MAX_CADASTRE_SCALE_THRESHOLD = 200.0 # metri oltre i quali il catasto mostra una immagine bianca (troppo zoom out)
 
-DISTANCE_SAMPLING = 250 #meters between points
+DISTANCE_SAMPLING = 200 #meters between points
 MAX_POINTS = 100000000000000
 MAX_COMUNI = 1000000000
 N_REGIONI_PARALLELO = 3
@@ -532,7 +532,7 @@ class CatastoQueryTool:
         if "Valle" in self.regione:
 
             return False
-        _query_str = f"SELECT id FROM comuni WHERE regione='{self.regione}' AND geom is not NULL;"
+        _query_str = f"SELECT id, comune FROM comuni WHERE regione='{self.regione}' AND geom is not NULL;"
         self.cursor.execute(_query_str)
         _comuni = self.cursor.fetchall()
         if _comuni is None:
@@ -544,7 +544,7 @@ class CatastoQueryTool:
             if i > MAX_COMUNI:
                 break
             i += 1
-            print("\n############# comune: " + str(i) + "/" + str(len(_comuni)) + " #############")
+            print("\n############# comune: "+str(_comune[1])+" - " + str(i) + "/" + str(len(_comuni)) + "regione: " + str(self.regione)+" #############")
             logging.info("\n############# comune: " + str(_comune[0]) + " #############")
             self.scan(_comune[0])
         self.stop()
@@ -573,16 +573,17 @@ class CatastoQueryTool:
             _result = False
             try:
                 _result = self.query_point(p[1], p[0])
-            except Exception:
-                logging.error("Uncautch exception in query_point")
-                pass
+            except Exception as e:
+                logging.error("Uncautch exception in query_point:")
+                print(e)
+                return False
             if _result:
                 queries_succeeded += 1
             if int(queries_index) % int(PRINT_UPDATES_EVERY_N_QUERY) == 0:
                 self.connection.commit()
                 errors = int(100 * (queries_index-queries_succeeded) / queries_index)
                 progress = int(100 * (queries_index) / queries_tot)
-                print(">> progress: "+str(progress)+"% - errors: "+str(errors)+"%")
+                #print(">> progress: "+str(progress)+"% - errors: "+str(errors)+"%")
                 #calc_process_time(starttime=start_time, cur_iter=queries_succeeded, max_iter=len(scan_points))
         self.connection.commit()
         end_time = time.time()
@@ -654,7 +655,7 @@ class CatastoQueryTool:
         self.connection.commit()
 
     def query_point(self, lat, lon, store=True):
-        if 39.0 < lat < 46.0 and 8.0 < lon < 14.0:
+        if 30.0 < lat < 54.0 and 4.0 < lon < 20.0:
             pass
         else:
             raise ValueError("FUCK BULSHIT I M VERY STUPID")
