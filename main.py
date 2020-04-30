@@ -32,7 +32,7 @@ logging.basicConfig(filename=log_file, filemode='w+', format='%(message)s', leve
 
 QUICK_MODE = True
 RESET_DB = True
-
+N_REGIONI_PARALLELO = 2
 DEBUG_IMAGE = False
 DEBUG_IMAGE_SAVE = False
 DEBUG_IMAGE_LIVE = False
@@ -513,21 +513,23 @@ class WMSTool:
 
 class CatastoQueryTool:
 
-    def __init__(self):
+    def __init__(self, regione):
         self.srs = 4258
-        self.wms = WMSTool(base_url=ITALIA_WMS_URL, srs=CATASTO_ITALIA_SRS, layer=CATASTO_ITALIA_LAYER_PARTICELLE)
-        # scan_points = []
-        # id_comune = None
-        self.connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
-        self.cursor = self.connection.cursor()
+        self.wms = None
+        self.regione = regione
+        self.connection = None
+        self.cursor = None
 
     def run(self):
+        if self.wms is None:
+            self.wms = WMSTool(base_url=ITALIA_WMS_URL, srs=CATASTO_ITALIA_SRS, layer=CATASTO_ITALIA_LAYER_PARTICELLE)
         if self.connection is None:
             self.connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
         if self.cursor is None:
             self.cursor = self.connection.cursor()
         # TODO: remove hard coded query
-        self.cursor.execute("SELECT id FROM comuni WHERE regione='Toscana' AND geom is not NULL;")
+        _query_str = f"SELECT id FROM comuni WHERE regione='{self.regione}' AND geom is not NULL;"
+        self.cursor.execute(_query_str)
         _comuni = self.cursor.fetchall()
         if _comuni is None:
             import sys
@@ -822,17 +824,57 @@ class CatastoQueryTool:
 
         return True
 
+from threading import Thread
+
+class CatastoThread(Thread):
+    def __init__(self, regione):
+        Thread.__init__(self)
+        self.catasto = CatastoQueryTool(regione=regione)
+
+    def run(self):
+        try:
+            self.catasto.run()
+        except KeyboardInterrupt:
+            self.catasto.stop()
+            print("STOOOOOPEEE!")
+            sys.exit(1)
+        
+
+def dump_regioni():
+    connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
+    cursor = connection.cursor()
+    cursor.execute("SELECT DISTINCT regione FROM comuni;")
+    results = cursor.fetchall()
+    _regioni = [res[0] for res in results]
+    print("end get regioni")
+    cursor.close()
+    connection.close()
+    return _regioni
+
+def grouper(n, iterable, fillvalue=None):
+    from itertools import zip_longest
+    args = [iter(iterable)]*n
+    return zip_longest(*args, fillvalue=fillvalue)
+
 
 if __name__ == '__main__':
+    all_regions = dump_regioni()
 
-    c = CatastoQueryTool()
-    c.reset()
 
-    try:
-        c.run()
-    except KeyboardInterrupt:
-        c.stop()
-        print("STOOOOOPEEE!")
-        sys.exit(1)
+    for grouped_regions in grouper(n=N_REGIONI_PARALLELO, iterable=all_regions):
+        # avoid None in list of regions
+        parallel_regions = [r for r in list(grouped_regions) if r is not None]
 
-    #c.query_point(lat=43.72028570195715, lon=11.285161133038065)
+        # crate parallels threads and wait to complete
+        threads = []
+        for region in parallel_regions:
+            t = CatastoThread(regione=region)
+            threads.append(t)
+
+        # start multi threading for N regioni
+        for th in threads:
+            th.start()
+
+        # active wait threads to complete before new parallel run
+        for th in threads:
+            th.join()
