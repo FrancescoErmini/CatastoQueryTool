@@ -43,7 +43,8 @@ CATASTO_ITALIA_LAYER_PARTICELLE = 'CP.CadastralParcel'
 MAX_CADASTRE_SCALE_THRESHOLD = 200.0 # metri oltre i quali il catasto mostra una immagine bianca (troppo zoom out)
 
 DISTANCE_SAMPLING = 100 #meters between points
-MAX_POINTS = 1000000
+MAX_POINTS = 10
+MAX_COMUNI = 1
 IMG_PIXEL_WIDTH = 200
 PRINT_UPDATES_EVERY_N_QUERY = 100
 QUERY_CONNECTION_TIMEOUT = 10
@@ -521,6 +522,10 @@ class CatastoQueryTool:
         self.cursor = self.connection.cursor()
 
     def run(self):
+        if self.connection is None:
+            self.connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
+        if self.cursor is None:
+            self.cursor = self.connection.cursor()
         # TODO: remove hard coded query
         self.cursor.execute("SELECT id FROM comuni WHERE regione='Toscana' AND geom is not NULL;")
         _comuni = self.cursor.fetchall()
@@ -530,22 +535,23 @@ class CatastoQueryTool:
             sys.exit(1)
         i = 0
         for _comune in _comuni:
-            
+            if i > MAX_COMUNI:
+                break
             i += 1
             print("\n############# comune: " + str(i) + "/" + str(len(_comuni)) + " #############")
             logging.info("\n############# comune: " + str(_comune[0]) + " #############")
             self.scan(_comune[0])
         self.stop()
-        
+
     def scan(self, id_comune):
-        
+
+
         scan_points = self.generate_points(id_comune=id_comune)
         if scan_points is None:
             logging.critical("Non ci sono punti da interrogare, bona ci si!")
             return False
 
-        if self.cursor is None:
-            self.cursor = self.connection.cursor()
+
 
         start_time = time.time()
         queries_succeeded = 0
@@ -555,6 +561,9 @@ class CatastoQueryTool:
         logging.info("TOT POINTS: "+str(queries_tot))
         for p in scan_points:
             queries_index += 1
+            if queries_index > MAX_POINTS:
+                logging.info("STOP FOR MAX POINTS REACHED")
+                break
             _result = False
             try:
                 _result = self.query_point(p[1], p[0])
@@ -639,7 +648,7 @@ class CatastoQueryTool:
         self.connection.commit()
 
     def query_point(self, lat, lon, store=True):
-        if 39.0 < lat < 46.0 and 8.0 < lon < 14.0: 
+        if 39.0 < lat < 46.0 and 8.0 < lon < 14.0:
             pass
         else:
             raise ValueError("FUCK BULSHIT I M VERY STUPID")
@@ -678,7 +687,7 @@ class CatastoQueryTool:
         if self.cursor.fetchone() is not None:
             logging.debug("particella duplicata: %s, %s, %s " % (comune, foglio, particella))
             return True
-        
+
         logging.debug("NUOVA PARTICELLA: %s, %s, %s " % (comune, foglio, particella))
         self.cursor.execute('INSERT INTO particelle (comune,foglio,particella) VALUES (%s, %s, %s)', (comune, foglio, particella))
 
@@ -704,7 +713,7 @@ class CatastoQueryTool:
         if _bbox_rcv is None:
             logging.error("Error: Issue parsing bbox data for comune %s, foglio %s, particella %s" % (comune, foglio, particella))
             return False
-        
+
         #todo aggiungi check validity coordinate e poligoni.
         bbox_poly = geometry.Polygon([[_bbox_rcv.lat1, _bbox_rcv.lon1], [_bbox_rcv.lat1, _bbox_rcv.lon2], [_bbox_rcv.lat2, _bbox_rcv.lon2], [_bbox_rcv.lat2, _bbox_rcv.lon1], [_bbox_rcv.lat1, _bbox_rcv.lon1]])
         self.cursor.execute('UPDATE particelle SET bbox=ST_GeomFromText(ST_AsText(%s),%s) WHERE comune=%s AND foglio=%s AND particella=%s;', (bbox_poly.wkt, str(self.srs), comune, foglio, particella))
@@ -818,7 +827,7 @@ if __name__ == '__main__':
 
     c = CatastoQueryTool()
     c.reset()
-    
+
     try:
         c.run()
     except KeyboardInterrupt:
