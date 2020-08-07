@@ -642,6 +642,7 @@ class CatastoQueryTool:
     def reset(self):
         if not RESET_DB:
             return True
+        return True
         drop_particelle = "DROP TABLE IF EXISTS particelle;"
 
         create_particelle = "CREATE TABLE particelle (id SERIAL PRIMARY KEY, \
