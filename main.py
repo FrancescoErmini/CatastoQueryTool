@@ -61,6 +61,8 @@ class bbox:
     x: int = -1
     y: int = -1
 
+
+
 @dataclass
 class size:
     w: int
@@ -72,6 +74,46 @@ class point:
     lat: float
     lon: float
 
+
+
+def valid_bbox(_bbox):
+    """
+     new_bbox_coords = [
+                [old_lon[0], old_lats[0]],
+                [old_lon[1], old_lats[0]],
+                [old_lon[1], old_lats[1]],
+                [old_lon[0], old_lats[1]],
+                [old_lon[0], old_lats[0]]
+            ]
+    Args:
+        _bbox:
+
+    Returns:
+
+    """
+    #_bbox[0][1] == _bbox[1][1]
+    # check the leght of polygon is 5 points
+    if len(_bbox) != 5:
+        raise Exception("no a valid bbox")
+    # check lon/lat ( array of 2 ) for each point
+    for point in _bbox:
+        if len(point) != 2:
+            raise Exception("A point must be an array of lon/lat")
+    # the last point is equal to the first point
+    if not (_bbox[0] == _bbox[4]):
+        raise Exception("no a valid bbox: first point and last point must be the same")
+    # check the two lon are not inverted ( for the italy )
+    if not (5.0 < _bbox[0][0] < 19.0 and 5.0 < _bbox[1][0] < 19.0):
+        raise Exception("no a valid bbox: lon coords not inside italy bounds")
+    if not (35.0 < _bbox[0][1] < 50.0 and 35.0 < _bbox[2][1] < 50.0):
+        raise Exception("no a valid bbox: lat coords not inside italy bounds")
+    # check  lons are ordered ( for the italy )
+    if not (_bbox[0][0] == _bbox[3][0] and _bbox[1][0] == _bbox[2][0]):
+        raise Exception("no a valid bbox: lon coords not orderd")
+    # check  lons are ordered ( for the italy )
+    if not (_bbox[0][1] == _bbox[1][1] and _bbox[2][1] == _bbox[3][1]):
+        raise Exception("no a valid bbox: lon coords not orderd")
+    return _bbox
 
 def parse_html_response(html_string):
     if html_string is None:
@@ -722,13 +764,26 @@ class CatastoQueryTool:
             logging.error("Error: Issue parsing bbox data for comune %s, foglio %s, particella %s" % (comune, foglio, particella))
             return False
 
-        #todo aggiungi check validity coordinate e poligoni.
-        bbox_poly = geometry.Polygon([[_bbox_rcv.lat1, _bbox_rcv.lon1], [_bbox_rcv.lat1, _bbox_rcv.lon2], [_bbox_rcv.lat2, _bbox_rcv.lon2], [_bbox_rcv.lat2, _bbox_rcv.lon1], [_bbox_rcv.lat1, _bbox_rcv.lon1]])
+        bbox_coords = [
+            [_bbox_rcv.lon1, _bbox_rcv.lat1],
+            [_bbox_rcv.lon2, _bbox_rcv.lat1],
+            [_bbox_rcv.lon2, _bbox_rcv.lat2],
+            [_bbox_rcv.lon1, _bbox_rcv.lat2],
+            [_bbox_rcv.lon1, _bbox_rcv.lat1]
+        ]
+
+        try:
+            valid_bbox(bbox_coords)
+        except Exception:
+            return False
+
+        bbox_poly = geometry.Polygon(bbox_coords)
         self.cursor.execute('UPDATE particelle SET bbox=ST_GeomFromText(ST_AsText(%s),%s) WHERE comune=%s AND foglio=%s AND particella=%s;', (bbox_poly.wkt, str(self.srs), comune, foglio, particella))
         #print("saved bbox for: %s, %s, %s ", (comune, foglio, particella))
 
         if QUICK_MODE:
-        	return True
+            return True
+
         """
         3. Ottieni immagine della particella di interesse.
         
