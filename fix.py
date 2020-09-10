@@ -109,7 +109,7 @@ def fix():
 
             bbox_poly = geometry.Polygon(new_bbox_coords)
             cursor.execute(
-                'UPDATE particelle_fix SET bbox=ST_GeomFromText(ST_AsText(%s),%s) WHERE id=%s;',
+                'UPDATE particelle_new SET bbox=ST_GeomFromText(ST_AsText(%s),%s) WHERE id=%s;',
                 (bbox_poly.wkt, str(CATASTO_ITALIA_SRS), parcel_id))
             # print("saved bbox for: %s, %s, %s ", (comune, foglio, parti
             connection.commit()

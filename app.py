@@ -6,7 +6,7 @@ from psycopg2 import extensions, sql
 
 import os
 import json
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 from flask import render_template
 app = Flask(__name__)
 
@@ -24,7 +24,7 @@ def get_particella(cadastral_parcel):
 				particella = cadastral_parcel.split(".")[1]
 				print(comune+" "+foglio+" "+particella)
 				#_sql2 = "SELECT bbox FROM particelle WHERE id=1;"
-				_sql = "SELECT bbox FROM particelle WHERE comune='{comune}' AND foglio='{foglio}' AND particella='{particella}';".format(
+				_sql = "SELECT bbox FROM particelle_new WHERE comune='{comune}' AND foglio='{foglio}' AND particella='{particella}';".format(
 					comune=comune,
 					foglio=foglio,
 					particella=particella)
@@ -37,13 +37,19 @@ def get_particella(cadastral_parcel):
 				return dumps(feature)
 
 			except Exception:
-				pass
+				return None
 
 
 
 @app.route('/parcel/<string:particella>', methods=['GET'])
 def get_particle_geom(particella):
-	return jsonify(get_particella(particella))
+
+	geojson = get_particella(particella)
+	#{'type': 'FeatureCollection', 'features': []}
+	if geojon is None:
+		abort(404, description="parcel not found")
+	
+	return jsonify(geojon)
 
 
 
