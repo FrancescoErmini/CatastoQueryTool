@@ -14,6 +14,7 @@ app = Flask(__name__)
 
 def get_particella(cadastral_parcel):
 	# A564_0024.356
+	# ^([a-zA-Z]{1})([0-9]{3})(_)([0-9]{6})(\.)([0-9]+)
 
 	connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
 	with connection:

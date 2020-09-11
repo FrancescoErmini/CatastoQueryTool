@@ -67,15 +67,14 @@ CATASTO_ITALIA_SRS = 4258
 
 
 
-def fix():
-    connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
-    cursor = connection.cursor()
-    cursor.execute(f"SELECT cod_catastale_comune FROM comuni;")
-    comuni = cursor.fetchall()
-    for comune in comuni:
-        cod_comune = comune[0]
+def update(cod_comune):
+    try:
+        connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
+        cursor = connection.cursor()
+    
         cursor.execute("SELECT id, bbox FROM particelle WHERE comune='%s';" % (cod_comune,))
         parcels = cursor.fetchall()
+        print("Parcels:"+str(len(parcels)))
         for parcel in parcels:
             """
              self.cursor.execute("SELECT  geom FROM comuni WHERE id='{0}';".format(str(id_comune)))
@@ -100,9 +99,9 @@ def fix():
             old_lon = old_poly.exterior.coords.xy[1]
             new_bbox_coords = [
                 [old_lon[0], old_lats[0]],
-                [old_lon[1], old_lats[0]],
                 [old_lon[1], old_lats[1]],
-                [old_lon[0], old_lats[1]],
+                [old_lon[2], old_lats[2]],
+                [old_lon[3], old_lats[3]],
                 [old_lon[0], old_lats[0]]
             ]
             valid_bbox(_bbox=new_bbox_coords)
@@ -112,9 +111,30 @@ def fix():
                 'UPDATE particelle_new SET bbox=ST_GeomFromText(ST_AsText(%s),%s) WHERE id=%s;',
                 (bbox_poly.wkt, str(CATASTO_ITALIA_SRS), parcel_id))
             # print("saved bbox for: %s, %s, %s ", (comune, foglio, parti
-            connection.commit()
+        connection.commit()
+        cursor.close()
+    except Exception as e:
+        print(e)
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def fix():
+    connection = psycopg2.connect(dbname='cadastredb', user='biloba', host='127.0.0.1', password='biloba')
+    cursor = connection.cursor()
+    cursor.execute(f"SELECT cod_catastale_comune FROM comuni;")
+    comuni = cursor.fetchall()
     cursor.close()
     connection.close()
+    i = 0
+    for comune in comuni:
+        cod_comune = comune[0]
+        i = i + 1
+        print("comune: "+str(i)+"/"+str(len(comuni)))
+        update(cod_comune)
+
+
 
 if __name__ == '__main__':
 	fix()
