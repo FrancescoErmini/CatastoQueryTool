@@ -31,7 +31,7 @@ logging.basicConfig(filename=log_file, filemode='w+', format='%(message)s', leve
 # logging.basicConfig(level=logging.ERROR)
 
 QUICK_MODE = True
-RESET_DB = True
+RESET_DB = False
 
 DEBUG_IMAGE = False
 DEBUG_IMAGE_SAVE = False
@@ -39,11 +39,11 @@ DEBUG_IMAGE_LIVE = False
 
 ITALIA_WMS_URL = 'https://wms.cartografia.agenziaentrate.gov.it/inspire/wms/ows01.php'
 CATASTO_ITALIA_SRS = 'EPSG:4258'
-CATASTO_ITALIA_LAYER_PARTICELLE = 'CP.CadastralParcel'
-MAX_CADASTRE_SCALE_THRESHOLD = 200.0 # metri oltre i quali il catasto mostra una immagine bianca (troppo zoom out)
+CATASTO_ITALIA_LAYER_PARTICELLE = 'CP.CadastralZoning'
+MAX_CADASTRE_SCALE_THRESHOLD = 2000.0 # metri oltre i quali il catasto mostra una immagine bianca (troppo zoom out)
 
-DISTANCE_SAMPLING = 100 #meters between points
-MAX_POINTS = 1000000
+DISTANCE_SAMPLING = 1000 #meters between points
+MAX_POINTS = 1000000000000
 IMG_PIXEL_WIDTH = 200
 PRINT_UPDATES_EVERY_N_QUERY = 100
 QUERY_CONNECTION_TIMEOUT = 10
@@ -82,7 +82,7 @@ def parse_html_response(html_string):
         codice = res[0]
         comune = codice[:4]
         foglio = codice[5:9]
-        particella = codice.split(".")[1]#codice[-3:]
+        particella = "0"
         return comune, foglio, particella
     except Exception:
         return None, None, None
@@ -522,7 +522,7 @@ class CatastoQueryTool:
 
     def run(self):
         # TODO: remove hard coded query
-        self.cursor.execute("SELECT id FROM comuni WHERE regione='Toscana' AND geom is not NULL;")
+        self.cursor.execute("SELECT id FROM comuni WHERE geom is not NULL;")
         _comuni = self.cursor.fetchall()
         if _comuni is None:
             import sys
@@ -530,7 +530,12 @@ class CatastoQueryTool:
             sys.exit(1)
         i = 0
         for _comune in _comuni:
-            
+            self.cursor.execute("SELECT count(*) FROM particelle WHERE comune='{0}';".format(str(_comune[0])))
+            comune_exists = self.cursor.fetchone()
+            if comune_exists[0] > 0:
+                logging.error(f"Comune {_comune[0]} esiste gia")
+                continue
+
             i += 1
             print("\n############# comune: " + str(i) + "/" + str(len(_comuni)) + " #############")
             logging.info("\n############# comune: " + str(_comune[0]) + " #############")
@@ -706,12 +711,16 @@ class CatastoQueryTool:
             return False
         
         #todo aggiungi check validity coordinate e poligoni.
-        bbox_poly = geometry.Polygon([[_bbox_rcv.lat1, _bbox_rcv.lon1], [_bbox_rcv.lat1, _bbox_rcv.lon2], [_bbox_rcv.lat2, _bbox_rcv.lon2], [_bbox_rcv.lat2, _bbox_rcv.lon1], [_bbox_rcv.lat1, _bbox_rcv.lon1]])
+        bbox_poly = geometry.Polygon([[_bbox_rcv.lon1, _bbox_rcv.lat1],
+                                      [_bbox_rcv.lon1, _bbox_rcv.lat2],
+                                      [_bbox_rcv.lon2, _bbox_rcv.lat2],
+                                      [_bbox_rcv.lon2, _bbox_rcv.lat1],
+                                      [_bbox_rcv.lon1, _bbox_rcv.lat1]])
         self.cursor.execute('UPDATE particelle SET bbox=ST_GeomFromText(ST_AsText(%s),%s) WHERE comune=%s AND foglio=%s AND particella=%s;', (bbox_poly.wkt, str(self.srs), comune, foglio, particella))
         #print("saved bbox for: %s, %s, %s ", (comune, foglio, particella))
 
         if QUICK_MODE:
-        	return True
+            return True
         """
         3. Ottieni immagine della particella di interesse.
         
