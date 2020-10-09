@@ -589,6 +589,7 @@ class QueryPoint:
         self.lat = lat
 
 
+
 class CatastoQueryTool:
 
     def __init__(self, comune, table, level=5):
@@ -703,6 +704,7 @@ class CatastoQueryTool:
                 cur.execute(create_fogli)
 
     def query_point(self, lat, lon, store=True):
+
         if 30.0 < lat < 54.0 and 4.0 < lon < 20.0:
             pass
         else:
