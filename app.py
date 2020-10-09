@@ -25,7 +25,7 @@ def get_particella(cadastral_parcel):
 				particella = cadastral_parcel.split(".")[1]
 				print(comune+" "+foglio+" "+particella)
 				#_sql2 = "SELECT bbox FROM particelle WHERE id=1;"
-				_sql = "SELECT bbox FROM particelle_new WHERE comune='{comune}' AND foglio='{foglio}' AND particella='{particella}';".format(
+				_sql = "SELECT bbox FROM particelle WHERE comune='{comune}' AND foglio='{foglio}' AND particella='{particella}';".format(
 					comune=comune,
 					foglio=foglio,
 					particella=particella)
@@ -47,13 +47,29 @@ def get_particle_geom(particella):
 
 	geojson = get_particella(particella)
 	#{'type': 'FeatureCollection', 'features': []}
-	if geojon is None:
+	if geojson is None:
 		abort(404, description="parcel not found")
 	
-	return jsonify(geojon)
+	return jsonify(geojson)
 
 
+@app.route('/comune/<string:comune>/foglio/<int:foglio>/particella/<int:particella>', methods=['GET'])
+def get_particle(comune, foglio, particella):
+	padding = ""
+	if len(str(foglio))==1:
+		padding = "000"
+	elif len(str(foglio))==2:
+		padding = "00"
+	elif len(str(foglio))==3:
+		padding = "0"
 
+	particella_id = f"{comune}_{padding}{str(foglio)}.{str(particella)}"
+	geojson = get_particella(particella_id)
+	# {'type': 'FeatureCollection', 'features': []}
+	if geojson is None:
+		abort(404, description="parcel not found")
+
+	return jsonify(geojson)
 
 
 #print(get_particella("H944_0001.662"))
