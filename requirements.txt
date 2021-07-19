@@ -95,7 +95,7 @@ ssh-import-id==5.7
 sshtunnel==0.1.4
 system-service==0.3
 systemd-python==234
-Twisted==17.9.0
+Twisted==19.7.0
 ubuntu-drivers-common==0.0.0
 ufw==0.36
 unattended-upgrades==0.1
